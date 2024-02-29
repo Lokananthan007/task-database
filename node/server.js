@@ -1,7 +1,8 @@
 const express = require('express');
 const parser = require('body-parser');
 const cors = require('cors');
-const multer = require('multer'); // Add this line
+const bcrypt = require('bcrypt');
+const multer = require('multer'); 
 const User = require('./userModel');
 require("./database").connect();
 
@@ -30,30 +31,28 @@ app.get("/user", async (req, res) => {
 
 app.post("/user", upload.fields([{ name: 'profileImage', maxCount: 1 }, { name: 'document', maxCount: 1 }]), async (req, res) => {
   try {
-    if (req.files) {
-      const formData = req.body;
-      const profileImage = req.files['profileImage'][0].buffer;
-      const document = req.files['document'][0].buffer;
+    const formData = req.body;
 
-      const newUser = new User({
-        ...formData,
-        profileImage: {
-          data: profileImage,
-          contentType: req.files['profileImage'][0].mimetype,
-        },
-        document: {
-          data: document,
-          contentType: req.files['document'][0].mimetype,
-        },
-      });
+    if (req.files) {
+      const profileImage = req.files['profileImage'][0];
+const document = req.files['document'][0];
+
+const newUser = new User({
+  ...formData,
+  profileImage: {
+    data: Buffer.from(profileImage.buffer),
+    contentType: profileImage.mimetype,
+  },
+  document: {
+    data: Buffer.from(document.buffer),
+    contentType: document.mimetype,
+  },
+});
+
 
       await newUser.save();
       res.status(201).json({ message: "User data saved successfully" });
     } else {
-      const formData = req.body;
-
-      console.log("Received request data:", formData);
-
       const newUser = new User(formData);
       await newUser.save();
       res.status(201).json({ message: "User data saved successfully" });
@@ -76,14 +75,6 @@ app.post("/user", async (req, res) => {
     await newUser.save();
     res.status(201).json({ message: "User data saved successfully" });
   } catch (error) {
-    if (error.name === 'ValidationError') {
-      const errors = {};
-      for (const field in error.errors) {
-        errors[field] = error.errors[field].message;
-      }
-      return res.status(400).json({ errors });
-    }
-
     console.error("Error saving user data:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
@@ -129,6 +120,33 @@ app.put("/user/:id", async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
+
+
+
+app.post('/user/login', async (req, res) => {
+  const { username, password } = req.body;
+
+  try {
+    const user = await User.findOne({ username });
+
+    if (!user) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+
+    const passwordMatch = await bcrypt.compare(password, user.password);
+
+    if (passwordMatch) {
+      res.status(200).json({ message: 'Login successful' });
+    } else {
+      res.status(401).json({ error: 'Invalid password' });
+    }
+  } catch (error) {
+    console.error('Error during login:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+
 
 app.listen(4455, () => {
   console.log('Server running on port 4455');
