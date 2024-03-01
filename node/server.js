@@ -1,18 +1,65 @@
 const express = require('express');
 const parser = require('body-parser');
 const cors = require('cors');
+const multer = require('multer');
+const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
-const multer = require('multer'); 
 const User = require('./userModel');
-require("./database").connect();
+require('./database').connect();
 
 const app = express();
-app.use(parser.urlencoded({ extended: true, limit: '50mb' }));
-app.use(parser.json({ limit: '50mb', extended: false }));
+app.use(parser.urlencoded({ extended: true, limit: '100mb' }));
+app.use(parser.json({ limit: '100mb', extended: true }));
 app.use(cors());
+
 
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
+
+const authenticateUser = (req, res, next) => {
+  const token = req.header('Authorization');
+
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, '#00777');
+    req.userId = decoded.userId;
+    next();
+  } catch (error) {
+    console.error('Error during authentication:', error);
+    res.status(401).json({ error: 'Unauthorized' });
+  }
+};
+
+
+
+app.post('/user/login', async (req, res) => {
+  const { name, password } = req.body;
+
+  try {
+    const user = await User.findOne({ name });
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const token = jwt.sign({ userId: user._id }, '#00777', { expiresIn: '1h' });
+
+    res.status(200).json({ token });
+  } catch (error) {
+    console.error('Error during login:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 
 app.get("/", async (req, res) => {
   console.log("client connected");
@@ -35,20 +82,19 @@ app.post("/user", upload.fields([{ name: 'profileImage', maxCount: 1 }, { name: 
 
     if (req.files) {
       const profileImage = req.files['profileImage'][0];
-const document = req.files['document'][0];
+      const document = req.files['document'][0];
 
-const newUser = new User({
-  ...formData,
-  profileImage: {
-    data: Buffer.from(profileImage.buffer),
-    contentType: profileImage.mimetype,
-  },
-  document: {
-    data: Buffer.from(document.buffer),
-    contentType: document.mimetype,
-  },
-});
-
+      const newUser = new User({
+        ...formData,
+        profileImage: {
+          data: Buffer.from(profileImage.buffer),  
+          contentType: profileImage.mimetype,
+        },
+        document: {
+          data: Buffer.from(document.buffer),  
+          contentType: document.mimetype,
+        },
+      });
 
       await newUser.save();
       res.status(201).json({ message: "User data saved successfully" });
@@ -80,7 +126,7 @@ app.post("/user", async (req, res) => {
   }
 });
 
-app.post("/delete", async (req, res) => {
+app.post("/user/delete", async (req, res) => {
   const { ids } = req.body;
 
   try {
@@ -107,7 +153,7 @@ app.get("/user/:id", async (req, res) => {
   }
 });
 
-app.put("/user/:id", async (req, res) => {
+app.put("/user/put/:id", async (req, res) => {
   const { id } = req.params;
   console.log("Received PUT request with id:", id);
 
@@ -118,31 +164,6 @@ app.put("/user/:id", async (req, res) => {
   } catch (error) {
     console.error("Error updating user data:", error);
     res.status(500).json({ error: "Internal Server Error" });
-  }
-});
-
-
-
-app.post('/user/login', async (req, res) => {
-  const { username, password } = req.body;
-
-  try {
-    const user = await User.findOne({ username });
-
-    if (!user) {
-      return res.status(401).json({ error: 'User not found' });
-    }
-
-    const passwordMatch = await bcrypt.compare(password, user.password);
-
-    if (passwordMatch) {
-      res.status(200).json({ message: 'Login successful' });
-    } else {
-      res.status(401).json({ error: 'Invalid password' });
-    }
-  } catch (error) {
-    console.error('Error during login:', error);
-    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
