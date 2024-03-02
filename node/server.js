@@ -6,6 +6,8 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const User = require('./userModel');
 require('./database').connect();
+const AdminModel = require('./adminModel');
+
 
 const app = express();
 app.use(parser.urlencoded({ extended: true, limit: '100mb' }));
@@ -32,6 +34,65 @@ const authenticateUser = (req, res, next) => {
     res.status(401).json({ error: 'Unauthorized' });
   }
 };
+
+const authenticateRole = (requiredRole) => {
+  return (req, res, next) => {
+    const userRole = req.user.role;
+
+    if (userRole !== requiredRole) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    next();
+  };
+};
+
+
+app.post('/admin/register', async (req, res) => {
+  const { name, password } = req.body;
+
+  try {
+    const existingAdmin = await AdminModel.findOne({ name });
+
+    if (existingAdmin) {
+      return res.status(400).json({ error: 'Admin with this username already exists' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newAdmin = new AdminModel({ name, password: hashedPassword });
+    await newAdmin.save();
+
+    res.status(201).json({ message: 'Admin registered successfully' });
+  } catch (error) {
+    console.error('Error during admin registration:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+
+app.get('/admin/dashboard', authenticateUser, authenticateRole('admin'), async (req, res) => {
+  try {
+    const adminData = await AdminModel.findOne({ name: req.user.name });
+
+    res.status(200).json({ message: 'Admin dashboard data', adminData });
+  } catch (error) {
+    console.error('Error in admin dashboard logic:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+
+app.get('/user/dashboard', authenticateUser, authenticateRole('user'), async (req, res) => {
+  try {
+    const userData = await UserModel.findOne({ _id: req.userId }); 
+
+    res.status(200).json({ message: 'User dashboard data', userData });
+  } catch (error) {
+    console.error('Error in user dashboard logic:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
 
 
 
